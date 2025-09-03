@@ -1,6 +1,7 @@
 import pandas as pd
 from langchain.agents import Tool, initialize_agent
-from langchain.llms import HuggingFacePipeline
+# from langchain.llms import HuggingFacePipeline
+from langchain_community.llms import HuggingFacePipeline
 from transformers import pipeline
 
 # -----------------------------
