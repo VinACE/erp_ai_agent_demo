@@ -53,7 +53,7 @@ def reconcile(erp, bank):
 # -----------------------------
 llm_pipeline = pipeline(
     "text-generation",
-    model="path/to/local/mixtral-7b",   # 👉 replace with your local model path
+    model="mistralai/Mixtral-8x7B-Instruct-v0.1",   # 👉 replace with your local model path
     device_map="auto",
     max_new_tokens=256
 )
