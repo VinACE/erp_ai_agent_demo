@@ -68,3 +68,14 @@ tools = [
     Tool(name="Get Bank Data", func=lambda _: load_bank_data().to_dict(orient="records"), description="Load Bank data"),
     Tool(name="Reconcile Transactions", func=lambda _: reconcile(), description="Match ERP and Bank transactions"),
 ]
+
+agent = initialize_agent(tools, llm, agent="zero-shot-react-description", verbose=True)
+
+# -----------------------------
+# 4. Demo Runner
+# -----------------------------
+if __name__ == "__main__":
+    print("🚀 Running ERP Agentic Demo...\n")
+    query = "Reconcile ERP and Bank transactions and summarize discrepancies."
+    result = agent.run(query)
+    print("\n✅ Final Result:\n", result)
