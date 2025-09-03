@@ -43,7 +43,7 @@ model_id = "mistralai/mixtral-8x7b-v0.1"
 llm_pipeline = pipeline(
     "text-generation",
     # model="path/to/local/mixtral-7b",   # 👉 replace with your local model path
-      model=model_id
+      model=model_id,
     device_map="auto",
     max_new_tokens=256
 )
