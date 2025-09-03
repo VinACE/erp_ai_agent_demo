@@ -2,71 +2,71 @@ import pandas as pd
 from langchain.agents import Tool, initialize_agent
 from langchain.llms import HuggingFacePipeline
 from transformers import pipeline
-import pprint
-
 
 # -----------------------------
-# Load ERP and Bank data
+# 1. Define Tools
 # -----------------------------
-def load_erp_data():
-    print("📂 Loading ERP data from erp_data.xlsx...")
-    df = pd.read_excel("erp_data.xlsx")
+def load_erp(file="erp_data.xlsx"):
+    print(f"📂 Loading ERP data from {file}...")
+    df = pd.read_excel(file)
     print("✅ ERP data sample:")
-    print(df.head())  # show first few rows
-    return df
+    print(df.head())
+    return df.to_dict(orient="records")
 
-def load_bank_data():
-    print("📂 Loading Bank data from bank_statement.csv...")
-    df = pd.read_csv("bank_statement.csv")
+def load_bank(file="bank_statement.csv"):
+    print(f"📂 Loading Bank data from {file}...")
+    df = pd.read_csv(file)
     print("✅ Bank data sample:")
-    print(df.head())  # show first few rows
-    return df
+    print(df.head())
+    return df.to_dict(orient="records")
 
-# -----------------------------
-# Reconciliation tool
-# -----------------------------
-def reconcile():
-    erp_df = load_erp_data()
-    bank_df = load_bank_data()
-
-    erp_df = erp_df.rename(columns={"Amount": "Amount"})
-    bank_df = bank_df.rename(columns={"Debit/Credit": "Amount"})
-    bank_df["Invoice ID"] = bank_df["Description"].str.extract(r"(INV-\d+)")
+def reconcile(erp, bank):
+    erp_df = pd.DataFrame(erp)
+    bank_df = pd.DataFrame(bank)
 
     merged = pd.merge(
-        erp_df,
-        bank_df,
+        erp_df, bank_df,
         how="outer",
         on="Invoice ID",
         suffixes=("_erp", "_bank"),
         indicator=True
     )
 
-    import math
-    def amounts_match(a, b, tol=0.01):
-        if pd.isna(a) or pd.isna(b):
-            return False
-        return math.isclose(float(a), float(b), rel_tol=tol, abs_tol=tol)
-
-    merged["Status_flag"] = merged.apply(lambda row: (
-        "Missing in ERP" if row["_merge"] == "right_only" else
-        "Missing in Bank" if row["_merge"] == "left_only" else
-        ("Amount mismatch" if not amounts_match(row["Amount_erp"], row["Amount_bank"]) else "Match")
+    merged["Status_flag"] = merged.apply(lambda r: (
+        "Missing in ERP" if r["_merge"] == "right_only" else
+        "Missing in Bank" if r["_merge"] == "left_only" else
+        ("Amount mismatch" if r["Amount_erp"] != r["Amount_bank"] else "Match")
     ), axis=1)
 
-    # ✅ Debug print of reconciliation result
-    print("\n🔍 Reconciliation table:")
+    # Debug: print reconciliation result
+    print("\n🔍 Reconciliation Table:")
     print(merged[["Invoice ID", "Amount_erp", "Amount_bank", "Status_flag"]])
+
+    # Save to CSV for inspection
+    merged.to_csv("reconciliation_output.csv", index=False)
+    print("💾 Reconciliation output saved to reconciliation_output.csv")
 
     return merged[["Invoice ID", "Amount_erp", "Amount_bank", "Status_flag"]].to_dict(orient="records")
 
 # -----------------------------
-# Tools for the agent
+# 2. Set up Local LLM
+# -----------------------------
+llm_pipeline = pipeline(
+    "text-generation",
+    model="path/to/local/mixtral-7b",   # 👉 replace with your local model path
+    device_map="auto",
+    max_new_tokens=256
+)
+
+llm = HuggingFacePipeline(pipeline=llm_pipeline)
+
+# -----------------------------
+# 3. Wrap Tools for Agent
 # -----------------------------
 tools = [
-    Tool(name="Get ERP Data", func=lambda _: load_erp_data().to_dict(orient="records"), description="Load ERP data"),
-    Tool(name="Get Bank Data", func=lambda _: load_bank_data().to_dict(orient="records"), description="Load Bank data"),
-    Tool(name="Reconcile Transactions", func=lambda _: reconcile(), description="Match ERP and Bank transactions"),
+    Tool(name="Load ERP", func=load_erp, description="Load ERP transactions"),
+    Tool(name="Load Bank", func=load_bank, description="Load Bank transactions"),
+    Tool(name="Reconcile", func=reconcile, description="Reconcile ERP and Bank data")
 ]
 
 agent = initialize_agent(tools, llm, agent="zero-shot-react-description", verbose=True)
