@@ -1,72 +1,69 @@
 import pandas as pd
 from langchain.agents import Tool, initialize_agent
-# from langchain.llms import HuggingFacePipeline
-from langchain_community.llms import HuggingFacePipeline
+from langchain.llms import HuggingFacePipeline
 from transformers import pipeline
+import pprint
 
 # -----------------------------
-# 1. Define Tools
+# Load ERP and Bank data
 # -----------------------------
-def load_erp(file="erp_data.xlsx"):
-    df = pd.read_excel(file)
-    return df.to_dict(orient="records")
+def load_erp_data():
+    print("📂 Loading ERP data from erp_data.xlsx...")
+    df = pd.read_excel("erp_data.xlsx")
+    print("✅ ERP data sample:")
+    print(df.head())  # show first few rows
+    return df
 
-def load_bank(file="bank_statement.csv"):
-    df = pd.read_csv(file)
-    return df.to_dict(orient="records")
+def load_bank_data():
+    print("📂 Loading Bank data from bank_statement.csv...")
+    df = pd.read_csv("bank_statement.csv")
+    print("✅ Bank data sample:")
+    print(df.head())  # show first few rows
+    return df
 
-def reconcile(erp, bank):
-    erp_df = pd.DataFrame(erp)
-    bank_df = pd.DataFrame(bank)
+# -----------------------------
+# Reconciliation tool
+# -----------------------------
+def reconcile():
+    erp_df = load_erp_data()
+    bank_df = load_bank_data()
+
+    erp_df = erp_df.rename(columns={"Amount": "Amount"})
+    bank_df = bank_df.rename(columns={"Debit/Credit": "Amount"})
+    bank_df["Invoice ID"] = bank_df["Description"].str.extract(r"(INV-\d+)")
 
     merged = pd.merge(
-        erp_df, bank_df,
+        erp_df,
+        bank_df,
         how="outer",
-        left_on="Invoice ID",
-        right_on="Invoice ID",
+        on="Invoice ID",
         suffixes=("_erp", "_bank"),
         indicator=True
     )
 
-    merged["Status_flag"] = merged.apply(lambda r: (
-        "Missing in ERP" if r["_merge"] == "right_only" else
-        "Missing in Bank" if r["_merge"] == "left_only" else
-        ("Amount mismatch" if r["Amount_erp"] != r["Amount_bank"] else "Match")
+    import math
+    def amounts_match(a, b, tol=0.01):
+        if pd.isna(a) or pd.isna(b):
+            return False
+        return math.isclose(float(a), float(b), rel_tol=tol, abs_tol=tol)
+
+    merged["Status_flag"] = merged.apply(lambda row: (
+        "Missing in ERP" if row["_merge"] == "right_only" else
+        "Missing in Bank" if row["_merge"] == "left_only" else
+        ("Amount mismatch" if not amounts_match(row["Amount_erp"], row["Amount_bank"]) else "Match")
     ), axis=1)
+
+    # ✅ Debug print of reconciliation result
+    print("\n🔍 Reconciliation table:")
+    print(merged[["Invoice ID", "Amount_erp", "Amount_bank", "Status_flag"]])
 
     return merged[["Invoice ID", "Amount_erp", "Amount_bank", "Status_flag"]].to_dict(orient="records")
 
 # -----------------------------
-# 2. Set up Local LLM
-# -----------------------------
-model_id = "mistralai/mixtral-8x7b-v0.1"
-llm_pipeline = pipeline(
-    "text-generation",
-    # model="path/to/local/mixtral-7b",   # 👉 replace with your local model path
-      model=model_id,
-    device_map="auto",
-    max_new_tokens=256
-)
-
-llm = HuggingFacePipeline(pipeline=llm_pipeline)
-
-# -----------------------------
-# 3. Wrap Tools for Agent
+# Tools for the agent
 # -----------------------------
 tools = [
-    Tool(name="Load ERP", func=load_erp, description="Load ERP transactions"),
-    Tool(name="Load Bank", func=load_bank, description="Load Bank transactions"),
-    Tool(name="Reconcile", func=reconcile, description="Reconcile ERP and Bank data")
+    Tool(name="Get ERP Data", func=lambda _: load_erp_data().to_dict(orient="records"), description="Load ERP data"),
+    Tool(name="Get Bank Data", func=lambda _: load_bank_data().to_dict(orient="records"), description="Load Bank data"),
+    Tool(name="Reconcile Transactions", func=lambda _: reconcile(), description="Match ERP and Bank transactions"),
 ]
-
-agent = initialize_agent(tools, llm, agent="zero-shot-react-description", verbose=True)
-
-# -----------------------------
-# 4. Demo Runner
-# -----------------------------
-if __name__ == "__main__":
-    print("🚀 Running ERP Agentic Demo...\n")
-    query = "Reconcile ERP and Bank transactions and summarize discrepancies."
-    result = agent.run(query)
-    print("\n✅ Final Result:\n", result)
-
