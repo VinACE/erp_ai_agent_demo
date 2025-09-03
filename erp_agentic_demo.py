@@ -5,31 +5,23 @@ from langchain.llms import HuggingFacePipeline
 from transformers import pipeline
 
 # -----------------------------
-# 1. Define Tools with Exception Handling
+# 1. Define Tools
 # -----------------------------
 def load_erp(file="erp_data.xlsx"):
     if not os.path.exists(file):
         print(f"[ERROR] ERP file not found: {file}")
         return []
-    try:
-        df = pd.read_excel(file)
-        print(f"[INFO] Loaded ERP data from {file}, rows={len(df)}")
-        return df.to_dict(orient="records")
-    except Exception as e:
-        print(f"[ERROR] Failed to read ERP file: {e}")
-        return []
+    df = pd.read_excel(file)
+    print(f"[DEBUG] ERP file loaded with {len(df)} records")
+    return df.to_dict(orient="records")
 
 def load_bank(file="bank_statement.csv"):
     if not os.path.exists(file):
         print(f"[ERROR] Bank file not found: {file}")
         return []
-    try:
-        df = pd.read_csv(file)
-        print(f"[INFO] Loaded Bank data from {file}, rows={len(df)}")
-        return df.to_dict(orient="records")
-    except Exception as e:
-        print(f"[ERROR] Failed to read Bank file: {e}")
-        return []
+    df = pd.read_csv(file)
+    print(f"[DEBUG] Bank file loaded with {len(df)} records")
+    return df.to_dict(orient="records")
 
 def reconcile(erp, bank):
     if not erp or not bank:
@@ -54,7 +46,7 @@ def reconcile(erp, bank):
         ("Amount mismatch" if r["Amount_erp"] != r["Amount_bank"] else "Match")
     ), axis=1)
 
-    print("[DEBUG] Reconciliation Table:")
+    print("[DEBUG] Intermediate reconciliation result:")
     print(merged[["Invoice ID", "Amount_erp", "Amount_bank", "Status_flag"]])
 
     return merged[["Invoice ID", "Amount_erp", "Amount_bank", "Status_flag"]].to_dict(orient="records")
@@ -62,9 +54,13 @@ def reconcile(erp, bank):
 # -----------------------------
 # 2. Set up Local LLM
 # -----------------------------
+model_path = os.path.expanduser(
+    "~/.cache/huggingface/hub/models--mistralai--mixtral-8x7b-v0.1/snapshots/fc7ac94680e38d7348cfa806e51218e6273104b0"
+)
+
 llm_pipeline = pipeline(
     "text-generation",
-    model="/home/vinsentparamanantham/.cache/huggingface/hub/models--mistralai--mixtral-8x7b-v0.1/snapshots/fc7ac94680e38d7348cfa806e51218e6273104b0",
+    model=model_path,
     device_map="auto",
     max_new_tokens=256
 )
@@ -87,6 +83,13 @@ agent = initialize_agent(tools, llm, agent="zero-shot-react-description", verbos
 # -----------------------------
 if __name__ == "__main__":
     print("🚀 Running ERP Agentic Demo...\n")
+
+    # Pre-check file loading before agent run
+    erp = load_erp()
+    bank = load_bank()
+    print(f"[INFO] ERP records loaded: {len(erp)}")
+    print(f"[INFO] Bank records loaded: {len(bank)}")
+
     query = "Reconcile ERP and Bank transactions and summarize discrepancies."
     result = agent.run(query)
     print("\n✅ Final Result:\n", result)
