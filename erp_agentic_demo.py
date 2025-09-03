@@ -12,7 +12,7 @@ def load_erp(file="erp_data.xlsx"):
         print(f"[ERROR] ERP file not found: {file}")
         return []
     df = pd.read_excel(file)
-    print(f"[DEBUG] ERP file loaded with {len(df)} records")
+    print(f"[INFO] ERP records loaded: {len(df)}")
     return df.to_dict(orient="records")
 
 def load_bank(file="bank_statement.csv"):
@@ -20,12 +20,12 @@ def load_bank(file="bank_statement.csv"):
         print(f"[ERROR] Bank file not found: {file}")
         return []
     df = pd.read_csv(file)
-    print(f"[DEBUG] Bank file loaded with {len(df)} records")
+    print(f"[INFO] Bank records loaded: {len(df)}")
     return df.to_dict(orient="records")
 
 def reconcile(erp, bank):
     if not erp or not bank:
-        print("[WARN] Missing ERP or Bank data, cannot reconcile.")
+        print("[WARN] Skipping reconciliation because one or both datasets are empty.")
         return [{"Invoice ID": None, "Amount_erp": None, "Amount_bank": None, "Status_flag": "No Data"}]
 
     erp_df = pd.DataFrame(erp)
@@ -34,8 +34,7 @@ def reconcile(erp, bank):
     merged = pd.merge(
         erp_df, bank_df,
         how="outer",
-        left_on="Invoice ID",
-        right_on="Invoice ID",
+        on="Invoice ID",
         suffixes=("_erp", "_bank"),
         indicator=True
     )
@@ -46,23 +45,18 @@ def reconcile(erp, bank):
         ("Amount mismatch" if r["Amount_erp"] != r["Amount_bank"] else "Match")
     ), axis=1)
 
-    print("[DEBUG] Intermediate reconciliation result:")
+    print("[DEBUG] Intermediate reconciliation table:")
     print(merged[["Invoice ID", "Amount_erp", "Amount_bank", "Status_flag"]])
-
     return merged[["Invoice ID", "Amount_erp", "Amount_bank", "Status_flag"]].to_dict(orient="records")
 
 # -----------------------------
 # 2. Set up Local LLM
 # -----------------------------
-model_path = os.path.expanduser(
-    "~/.cache/huggingface/hub/models--mistralai--mixtral-8x7b-v0.1/snapshots/fc7ac94680e38d7348cfa806e51218e6273104b0"
-)
-
 llm_pipeline = pipeline(
     "text-generation",
-    model=model_path,
+    model=os.path.expanduser("~/.cache/huggingface/hub/models--mistralai--mixtral-8x7b-v0.1/snapshots/fc7ac94680e38d7348cfa806e51218e6273104b0"),
     device_map="auto",
-    max_new_tokens=256
+    max_new_tokens=128  # shorter output to avoid CPU slowdown
 )
 
 llm = HuggingFacePipeline(pipeline=llm_pipeline)
@@ -84,12 +78,13 @@ agent = initialize_agent(tools, llm, agent="zero-shot-react-description", verbos
 if __name__ == "__main__":
     print("🚀 Running ERP Agentic Demo...\n")
 
-    # Pre-check file loading before agent run
+    # Pre-check: load data
     erp = load_erp()
     bank = load_bank()
-    print(f"[INFO] ERP records loaded: {len(erp)}")
-    print(f"[INFO] Bank records loaded: {len(bank)}")
 
-    query = "Reconcile ERP and Bank transactions and summarize discrepancies."
-    result = agent.run(query)
-    print("\n✅ Final Result:\n", result)
+    if not erp or not bank:
+        print("[INFO] Skipping agent execution because required files are missing.")
+    else:
+        query = "Reconcile ERP and Bank transactions and summarize discrepancies."
+        result = agent.run(query)
+        print("\n✅ Final Result:\n", result)
