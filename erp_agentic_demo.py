@@ -1,26 +1,41 @@
 import os
 import pandas as pd
 from langchain.agents import Tool, initialize_agent
-from langchain_community.llms import HuggingFacePipeline  # ✅ updated import
+from langchain.llms import HuggingFacePipeline
 from transformers import pipeline
 
 # -----------------------------
-# 1. Define Tools
+# 1. Define Tools with Exception Handling
 # -----------------------------
 def load_erp(file="erp_data.xlsx"):
-    print(f"📂 Loading ERP data from {file}")
-    df = pd.read_excel(file)
-    print(f"✅ ERP data loaded: {len(df)} rows")
-    return df.to_dict(orient="records")
+    if not os.path.exists(file):
+        print(f"[ERROR] ERP file not found: {file}")
+        return []
+    try:
+        df = pd.read_excel(file)
+        print(f"[INFO] Loaded ERP data from {file}, rows={len(df)}")
+        return df.to_dict(orient="records")
+    except Exception as e:
+        print(f"[ERROR] Failed to read ERP file: {e}")
+        return []
 
 def load_bank(file="bank_statement.csv"):
-    print(f"📂 Loading Bank data from {file}")
-    df = pd.read_csv(file)
-    print(f"✅ Bank data loaded: {len(df)} rows")
-    return df.to_dict(orient="records")
+    if not os.path.exists(file):
+        print(f"[ERROR] Bank file not found: {file}")
+        return []
+    try:
+        df = pd.read_csv(file)
+        print(f"[INFO] Loaded Bank data from {file}, rows={len(df)}")
+        return df.to_dict(orient="records")
+    except Exception as e:
+        print(f"[ERROR] Failed to read Bank file: {e}")
+        return []
 
 def reconcile(erp, bank):
-    print("🔄 Reconciling ERP and Bank data...")
+    if not erp or not bank:
+        print("[WARN] Missing ERP or Bank data, cannot reconcile.")
+        return [{"Invoice ID": None, "Amount_erp": None, "Amount_bank": None, "Status_flag": "No Data"}]
+
     erp_df = pd.DataFrame(erp)
     bank_df = pd.DataFrame(bank)
 
@@ -39,7 +54,7 @@ def reconcile(erp, bank):
         ("Amount mismatch" if r["Amount_erp"] != r["Amount_bank"] else "Match")
     ), axis=1)
 
-    print("📊 Reconciliation Table:")
+    print("[DEBUG] Reconciliation Table:")
     print(merged[["Invoice ID", "Amount_erp", "Amount_bank", "Status_flag"]])
 
     return merged[["Invoice ID", "Amount_erp", "Amount_bank", "Status_flag"]].to_dict(orient="records")
@@ -47,16 +62,9 @@ def reconcile(erp, bank):
 # -----------------------------
 # 2. Set up Local LLM
 # -----------------------------
-# Expand user (~) so Python resolves correctly
-model_path = os.path.expanduser(
-    "~/.cache/huggingface/hub/models--mistralai--mixtral-8x7b-v0.1/snapshots/fc7ac94680e38d7348cfa806e51218e6273104b0"
-)
-
-print(f"🧠 Loading local Mixtral model from: {model_path}")
-
 llm_pipeline = pipeline(
     "text-generation",
-    model=model_path,
+    model="/home/vinsentparamanantham/.cache/huggingface/hub/models--mistralai--mixtral-8x7b-v0.1/snapshots/fc7ac94680e38d7348cfa806e51218e6273104b0",
     device_map="auto",
     max_new_tokens=256
 )
