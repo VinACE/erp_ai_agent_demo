@@ -49,10 +49,13 @@ def reconcile(erp, bank):
     erp_df = pd.DataFrame(erp)
     bank_df = pd.DataFrame(bank)
 
-    if erp_df.empty or bank_df.empty:
-        print("[WARN] One of the datasets is empty, skipping reconciliation.")
-        return []
+    # Add warnings if data is missing
+    if erp_df.empty:
+        print("[WARN] ERP dataset is empty.")
+    if bank_df.empty:
+        print("[WARN] Bank dataset is empty.")
 
+    # Merge ERP and Bank datasets (still runs even if one is empty)
     merged = pd.merge(
         erp_df, bank_df,
         how="outer",
@@ -72,7 +75,7 @@ def reconcile(erp, bank):
     print("\n[DEBUG] Preview of reconciliation table:")
     print(merged[["Invoice ID", "Amount_erp", "Amount_bank", "Status_flag"]].head())
 
-    # Save full reconciliation to CSV
+    # Save full reconciliation to CSV (always generates)
     output_file = "reconciliation_report.csv"
     merged.to_csv(output_file, index=False)
     print(f"[INFO] Full reconciliation report saved to {output_file}")
@@ -116,9 +119,9 @@ if __name__ == "__main__":
     erp_records = load_erp("erp_data.xlsx")
     bank_records = extract_bank_from_pdf("bank_statement.pdf")
 
-    if erp_records and bank_records:
+    if erp_records or bank_records:  # run even if one is empty
         query = "Reconcile ERP and Bank transactions and summarize discrepancies."
         result = agent.run(query)
         print("\n✅ Final Result:\n", result)
     else:
-        print("[INFO] Skipping agent execution because required files are missing.")
+        print("[INFO] Skipping agent execution because no records were loaded at all.")
