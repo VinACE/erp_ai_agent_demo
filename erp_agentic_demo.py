@@ -32,10 +32,11 @@ def extract_bank_from_pdf(pdf_file="bank_statement.pdf"):
             lines = text.split("\n")
             for line in lines:
                 parts = line.split()
-                if len(parts) >= 2:
+                # Expected format: Date | Description | Invoice | Amount | RefID
+                if len(parts) >= 5 and parts[1] == "Payment":
                     try:
-                        invoice_id = parts[0]
-                        amount = float(parts[1])
+                        invoice_id = parts[2]       # e.g. INV0001
+                        amount = float(parts[3])    # e.g. 267.1
                         records.append({"Invoice ID": invoice_id, "Amount": amount})
                     except ValueError:
                         continue
@@ -82,7 +83,9 @@ def reconcile(erp, bank):
 # -----------------------------
 # 2. Set up Local LLM
 # -----------------------------
-MODEL_PATH = os.path.expanduser("~/.cache/huggingface/hub/models--mistralai--mixtral-8x7b-v0.1/snapshots/fc7ac94680e38d7348cfa806e51218e6273104b0")
+MODEL_PATH = os.path.expanduser(
+    "~/.cache/huggingface/hub/models--mistralai--mixtral-8x7b-v0.1/snapshots/fc7ac94680e38d7348cfa806e51218e6273104b0"
+)
 
 llm_pipeline = pipeline(
     "text-generation",
